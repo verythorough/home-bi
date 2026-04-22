@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('api', {
   getDashboardPanels: () => ipcRenderer.invoke('get-dashboard-panels'),
   addDashboardPanel: (queryName) => ipcRenderer.invoke('add-dashboard-panel', queryName),
   removeDashboardPanel: (id) => ipcRenderer.invoke('remove-dashboard-panel', id),
+  getSchema: () => ipcRenderer.invoke('get-schema'),
 });

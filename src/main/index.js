@@ -1,9 +1,7 @@
-'use strict';
-
-const { app, BrowserWindow } = require('electron');
-const path = require('path');
-const { openDatabase } = require('./database');
-const { registerIpcHandlers } = require('./ipc-handlers');
+import { app, BrowserWindow } from 'electron';
+import path from 'path';
+import { openDatabase } from './database';
+import { registerIpcHandlers } from './ipc-handlers';
 
 function createWindow() {
   const win = new BrowserWindow({

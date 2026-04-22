@@ -1,9 +1,7 @@
-'use strict';
-
-const { ipcMain, dialog } = require('electron');
-const fs = require('fs');
-const { parseQIF } = require('./qif-parser');
-const { importQIFData, runQuery, saveQuery, listSavedQueries, deleteSavedQuery, getDashboardPanels, addDashboardPanel, removeDashboardPanel } = require('./database');
+import { ipcMain, dialog } from 'electron';
+import fs from 'fs';
+import { parseQIF } from './qif-parser';
+import { importQIFData, runQuery, saveQuery, listSavedQueries, deleteSavedQuery, getDashboardPanels, addDashboardPanel, removeDashboardPanel, getDatabase } from './database';
 
 function registerIpcHandlers() {
   ipcMain.handle('import-qif-file', async (event, droppedPath) => {
@@ -116,6 +114,20 @@ function registerIpcHandlers() {
       return { success: false, reason: err.message };
     }
   });
+
+  ipcMain.handle('get-schema', async () => {
+    try {
+      const db = getDatabase();
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
+      const schema = tables.map(({ name }) => ({
+        name,
+        columns: db.prepare(`PRAGMA table_info(${name})`).all().map((c) => ({ name: c.name, type: c.type })),
+      }));
+      return { success: true, schema };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
 }
 
-module.exports = { registerIpcHandlers };
+export { registerIpcHandlers };

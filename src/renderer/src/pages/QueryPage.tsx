@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
+import type * as Monaco from 'monaco-editor'
 import {
   useReactTable,
   getCoreRowModel,
@@ -9,6 +10,16 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import ChartPanel, { type ChartConfig } from '../components/ChartPanel'
+
+interface SchemaColumn {
+  name: string
+  type: string
+}
+
+interface SchemaTable {
+  name: string
+  columns: SchemaColumn[]
+}
 
 interface SavedQuery {
   id: number
@@ -25,7 +36,7 @@ const DEFAULT_CHART_CONFIG: ChartConfig = {
 }
 
 function QueryPage(): JSX.Element {
-  const [sql, setSql] = useState('SELECT * FROM transactions LIMIT 20')
+  const [sql, setSql] = useState('select * from transactions')
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [columns, setColumns] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -38,6 +49,11 @@ function QueryPage(): JSX.Element {
   const [view, setView] = useState<'table' | 'chart'>('table')
   const [chartConfig, setChartConfig] = useState<ChartConfig>(DEFAULT_CHART_CONFIG)
   const sqlRef = useRef(sql)
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+  const completionDisposableRef = useRef<{ dispose: () => void } | null>(null)
+  const [schema, setSchema] = useState<SchemaTable[]>([])
+  const schemaRef = useRef<SchemaTable[]>([])
+  const [selectedTable, setSelectedTable] = useState<string | null>(null)
 
   // Keep ref in sync so keyboard handler always has latest sql
   useEffect(() => {
@@ -46,15 +62,23 @@ function QueryPage(): JSX.Element {
 
   useEffect(() => {
     loadSavedQueries()
+    loadSchema()
   }, [])
+
+  async function loadSchema(): Promise<void> {
+    const res = await window.api.getSchema()
+    if (res.success && res.schema) {
+      setSchema(res.schema)
+      schemaRef.current = res.schema
+    }
+  }
 
   async function loadSavedQueries(): Promise<void> {
     const res = await window.api.listSavedQueries()
     if (res.success && res.queries) setSavedQueries(res.queries)
   }
 
-  const runQuery = useCallback(async (): Promise<void> => {
-    const query = sqlRef.current
+  const executeQuery = useCallback(async (query: string): Promise<void> => {
     if (!query.trim()) return
     setRunning(true)
     setError(null)
@@ -83,9 +107,79 @@ function QueryPage(): JSX.Element {
     }
   }, [])
 
+  const runQuery = useCallback((): Promise<void> => {
+    return executeQuery(sqlRef.current)
+  }, [executeQuery])
+
+  const SQL_KEYWORDS = [
+    'select', 'from', 'where', 'and', 'or', 'not', 'group', 'by', 'order',
+    'having', 'limit', 'offset', 'join', 'left', 'right', 'inner', 'outer',
+    'on', 'as', 'distinct', 'count', 'sum', 'avg', 'min', 'max', 'null',
+    'is', 'in', 'like', 'between', 'case', 'when', 'then', 'else', 'end',
+    'with', 'union', 'all', 'insert', 'into', 'values', 'update', 'set',
+    'delete', 'create', 'table', 'drop', 'alter', 'asc', 'desc',
+  ]
+
   // Cmd/Ctrl+Enter shortcut via Monaco editor action
   const handleEditorMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runQuery())
+
+    completionDisposableRef.current?.dispose()
+    completionDisposableRef.current = monaco.languages.registerCompletionItemProvider('sql', {
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position)
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        }
+
+        const keywordSuggestions = SQL_KEYWORDS.map((kw) => ({
+          label: kw,
+          kind: monaco.languages.CompletionItemKind.Keyword,
+          insertText: kw,
+          range,
+        }))
+
+        const tableSuggestions = schemaRef.current.map((t) => ({
+          label: t.name,
+          kind: monaco.languages.CompletionItemKind.Class,
+          insertText: t.name,
+          detail: 'table',
+          range,
+        }))
+
+        const columnSuggestions = schemaRef.current.flatMap((t) =>
+          t.columns.map((col) => ({
+            label: col.name,
+            kind: monaco.languages.CompletionItemKind.Field,
+            insertText: col.name,
+            detail: `${t.name} · ${col.type}`,
+            range,
+          }))
+        )
+
+        return { suggestions: [...keywordSuggestions, ...tableSuggestions, ...columnSuggestions] }
+      },
+    })
+  }
+
+  function insertIntoEditor(text: string): void {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    editor.trigger('schema-browser', 'type', { text })
+  }
+
+  function generateAndRunSelectAll(table: SchemaTable): void {
+    const colList = table.columns.map((c) => `  ${c.name}`).join(',\n')
+    const generated = `select\n${colList}\nfrom ${table.name}`
+    setSql(generated)
+    sqlRef.current = generated
+    editorRef.current?.setValue(generated)
+    executeQuery(generated)
   }
 
   async function handleSave(): Promise<void> {
@@ -377,6 +471,186 @@ function QueryPage(): JSX.Element {
         {execTime !== null && !error && rows.length === 0 && (
           <div style={{ color: 'var(--text-muted)' }}>Query returned no rows.</div>
         )}
+      </div>
+
+      {/* Schema browser sidebar */}
+      <div
+        style={{
+          width: 200,
+          flexShrink: 0,
+          borderLeft: '1px solid var(--border)',
+          display: 'flex',
+          flexDirection: 'column',
+          marginLeft: 24,
+        }}
+      >
+        {/* Tables panel */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            borderBottom: '1px solid var(--border)',
+            paddingBottom: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--text-muted)',
+              padding: '0 0 10px 12px',
+              flexShrink: 0,
+            }}
+          >
+            Tables
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {schema.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '0 12px' }}>
+                Import a QIF file first
+              </div>
+            )}
+            {schema.map((table) => (
+              <button
+                key={table.name}
+                onClick={() => setSelectedTable(table.name === selectedTable ? null : table.name)}
+                onDoubleClick={() => insertIntoEditor(table.name)}
+                title="Click to expand · Double-click to insert name"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: selectedTable === table.name ? 'var(--accent)' : 'none',
+                  border: 'none',
+                  color: selectedTable === table.name ? '#fff' : 'var(--text)',
+                  padding: '6px 12px',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  marginBottom: 2,
+                }}
+                onMouseEnter={(e) => {
+                  if (selectedTable !== table.name)
+                    (e.currentTarget as HTMLElement).style.background = 'var(--accent)'
+                }}
+                onMouseLeave={(e) => {
+                  if (selectedTable !== table.name)
+                    (e.currentTarget as HTMLElement).style.background = 'none'
+                }}
+              >
+                {table.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Columns panel */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 0,
+            paddingTop: 8,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 8px 10px 12px',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--text-muted)',
+              }}
+            >
+              {selectedTable ? selectedTable : 'Columns'}
+            </span>
+            {selectedTable && (() => {
+              const tbl = schema.find((t) => t.name === selectedTable)
+              return tbl ? (
+                <button
+                  onClick={() => generateAndRunSelectAll(tbl)}
+                  title={`SELECT all columns from ${selectedTable} and run`}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--border)',
+                    borderRadius: 4,
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    lineHeight: 1,
+                    padding: '3px 6px',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.color = '#fff'
+                    ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'
+                    ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
+                  }}
+                >
+                  ▶
+                </button>
+              ) : null
+            })()}
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {!selectedTable && (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: '0 12px' }}>
+                Select a table
+              </div>
+            )}
+            {selectedTable &&
+              (schema.find((t) => t.name === selectedTable)?.columns ?? []).map((col) => (
+                <button
+                  key={col.name}
+                  onClick={() => insertIntoEditor(col.name)}
+                  onDoubleClick={() => insertIntoEditor(col.name)}
+                  title={`Click or double-click to insert "${col.name}" at cursor`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: 6,
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text)',
+                    padding: '5px 12px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    marginBottom: 1,
+                  }}
+                  onMouseEnter={(e) =>
+                    ((e.currentTarget as HTMLElement).style.background = 'var(--accent)')
+                  }
+                  onMouseLeave={(e) =>
+                    ((e.currentTarget as HTMLElement).style.background = 'none')
+                  }
+                >
+                  <span>{col.name}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    {col.type}
+                  </span>
+                </button>
+              ))}
+          </div>
+        </div>
       </div>
 
       {/* Save query modal */}

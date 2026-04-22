@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * QIF (Quicken Interchange Format) parser.
  * Supports account types: Bank, CCard, Cash, Oth A, Oth L, Invst

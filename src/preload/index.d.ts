@@ -50,6 +50,22 @@ export interface DashboardPanelsResult {
   panels?: DashboardPanel[]
 }
 
+export interface SchemaColumn {
+  name: string
+  type: string
+}
+
+export interface SchemaTable {
+  name: string
+  columns: SchemaColumn[]
+}
+
+export interface SchemaResult {
+  success: boolean
+  reason?: string
+  schema?: SchemaTable[]
+}
+
 declare global {
   interface Window {
     api: {
@@ -61,6 +77,7 @@ declare global {
       getDashboardPanels: () => Promise<DashboardPanelsResult>
       addDashboardPanel: (queryName: string) => Promise<{ success: boolean; reason?: string; id?: number }>
       removeDashboardPanel: (id: number) => Promise<{ success: boolean; reason?: string }>
+      getSchema: () => Promise<SchemaResult>
     }
   }
 }
