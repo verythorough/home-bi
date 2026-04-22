@@ -2,9 +2,9 @@ import { useState } from 'react'
 import Sidebar from './components/Sidebar'
 import ImportPage from './pages/ImportPage'
 import QueryPage from './pages/QueryPage'
-import DashboardPage from './pages/DashboardPage'
+import ReportsPage from './pages/ReportsPage'
 
-export type Page = 'import' | 'query' | 'dashboard'
+export type Page = 'import' | 'query' | 'reports'
 
 function App(): JSX.Element {
   const [currentPage, setCurrentPage] = useState<Page>('import')
@@ -15,8 +15,8 @@ function App(): JSX.Element {
         return <ImportPage />
       case 'query':
         return <QueryPage />
-      case 'dashboard':
-        return <DashboardPage />
+      case 'reports':
+        return <ReportsPage />
     }
   }
 

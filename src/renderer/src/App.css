@@ -122,3 +122,39 @@ body {
   line-height: 1.6;
   max-width: 560px;
 }
+
+@media print {
+  .sidebar,
+  .reports-sidebar,
+  .report-header-actions,
+  .panel-header-actions,
+  .report-item-actions {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    overflow: visible;
+    height: auto;
+    color: #000;
+  }
+
+  .app {
+    height: auto;
+  }
+
+  .content {
+    overflow: visible;
+    padding: 16px;
+  }
+
+  .report-content {
+    overflow: visible;
+  }
+
+  .report-panel-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+}

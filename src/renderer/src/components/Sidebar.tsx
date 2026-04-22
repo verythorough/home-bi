@@ -8,7 +8,7 @@ interface SidebarProps {
 const navItems: { page: Page; label: string; icon: string }[] = [
   { page: 'import', label: 'Import', icon: '📂' },
   { page: 'query', label: 'Query', icon: '🔍' },
-  { page: 'dashboard', label: 'Dashboard', icon: '📊' }
+  { page: 'reports', label: 'Reports', icon: '📋' },
 ]
 
 function Sidebar({ currentPage, onNavigate }: SidebarProps): JSX.Element {

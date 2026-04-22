@@ -1,7 +1,7 @@
 import { ipcMain, dialog } from 'electron';
 import fs from 'fs';
 import { parseQIF } from './qif-parser';
-import { importQIFData, runQuery, saveQuery, listSavedQueries, deleteSavedQuery, getDashboardPanels, addDashboardPanel, removeDashboardPanel, getDatabase } from './database';
+import { importQIFData, runQuery, saveQuery, listSavedQueries, deleteSavedQuery, getDashboardPanels, addDashboardPanel, removeDashboardPanel, getDatabase, createReport, listReports, renameReport, deleteReport, getReportPanels, addReportPanel, updatePanelViewMode } from './database';
 
 function registerIpcHandlers() {
   ipcMain.handle('import-qif-file', async (event, droppedPath) => {
@@ -109,6 +109,72 @@ function registerIpcHandlers() {
   ipcMain.handle('remove-dashboard-panel', async (event, id) => {
     try {
       removeDashboardPanel(id);
+      return { success: true };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
+
+  ipcMain.handle('create-report', async (event, name) => {
+    if (!name) return { success: false, reason: 'Name required' };
+    try {
+      const id = createReport(name);
+      return { success: true, id };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
+
+  ipcMain.handle('list-reports', async () => {
+    try {
+      const reports = listReports();
+      return { success: true, reports };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
+
+  ipcMain.handle('rename-report', async (event, id, name) => {
+    if (!name) return { success: false, reason: 'Name required' };
+    try {
+      renameReport(id, name);
+      return { success: true };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
+
+  ipcMain.handle('delete-report', async (event, id) => {
+    try {
+      deleteReport(id);
+      return { success: true };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
+
+  ipcMain.handle('get-report-panels', async (event, reportId) => {
+    try {
+      const panels = getReportPanels(reportId);
+      return { success: true, panels };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
+
+  ipcMain.handle('add-report-panel', async (event, reportId, queryName) => {
+    if (!queryName) return { success: false, reason: 'Query name required' };
+    try {
+      const id = addReportPanel(reportId, queryName);
+      return { success: true, id };
+    } catch (err) {
+      return { success: false, reason: err.message };
+    }
+  });
+
+  ipcMain.handle('update-panel-view-mode', async (event, id, viewMode) => {
+    try {
+      updatePanelViewMode(id, viewMode);
       return { success: true };
     } catch (err) {
       return { success: false, reason: err.message };

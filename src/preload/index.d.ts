@@ -66,6 +66,31 @@ export interface SchemaResult {
   schema?: SchemaTable[]
 }
 
+export interface Report {
+  id: number
+  name: string
+  created_at: string
+}
+
+export interface ReportsResult {
+  success: boolean
+  reason?: string
+  reports?: Report[]
+}
+
+export interface ReportPanel {
+  id: number
+  query_name: string
+  position: number
+  view_mode: 'auto' | 'table' | 'chart'
+}
+
+export interface ReportPanelsResult {
+  success: boolean
+  reason?: string
+  panels?: ReportPanel[]
+}
+
 declare global {
   interface Window {
     api: {
@@ -78,6 +103,13 @@ declare global {
       addDashboardPanel: (queryName: string) => Promise<{ success: boolean; reason?: string; id?: number }>
       removeDashboardPanel: (id: number) => Promise<{ success: boolean; reason?: string }>
       getSchema: () => Promise<SchemaResult>
+      createReport: (name: string) => Promise<{ success: boolean; reason?: string; id?: number }>
+      listReports: () => Promise<ReportsResult>
+      renameReport: (id: number, name: string) => Promise<{ success: boolean; reason?: string }>
+      deleteReport: (id: number) => Promise<{ success: boolean; reason?: string }>
+      getReportPanels: (reportId: number) => Promise<ReportPanelsResult>
+      addReportPanel: (reportId: number, queryName: string) => Promise<{ success: boolean; reason?: string; id?: number }>
+      updatePanelViewMode: (id: number, viewMode: 'auto' | 'table' | 'chart') => Promise<{ success: boolean; reason?: string }>
     }
   }
 }

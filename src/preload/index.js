@@ -12,4 +12,11 @@ contextBridge.exposeInMainWorld('api', {
   addDashboardPanel: (queryName) => ipcRenderer.invoke('add-dashboard-panel', queryName),
   removeDashboardPanel: (id) => ipcRenderer.invoke('remove-dashboard-panel', id),
   getSchema: () => ipcRenderer.invoke('get-schema'),
+  createReport: (name) => ipcRenderer.invoke('create-report', name),
+  listReports: () => ipcRenderer.invoke('list-reports'),
+  renameReport: (id, name) => ipcRenderer.invoke('rename-report', id, name),
+  deleteReport: (id) => ipcRenderer.invoke('delete-report', id),
+  getReportPanels: (reportId) => ipcRenderer.invoke('get-report-panels', reportId),
+  addReportPanel: (reportId, queryName) => ipcRenderer.invoke('add-report-panel', reportId, queryName),
+  updatePanelViewMode: (id, viewMode) => ipcRenderer.invoke('update-panel-view-mode', id, viewMode),
 });

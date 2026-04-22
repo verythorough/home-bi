@@ -24,12 +24,27 @@ function openDatabase(app) {
 }
 
 function runMigrations() {
-  // Add chart_config column if it doesn't exist (migration for existing DBs)
   try {
     db.exec('ALTER TABLE saved_queries ADD COLUMN chart_config TEXT');
-  } catch (_) {
-    // Column already exists — safe to ignore
+  } catch (_) {}
+
+  try {
+    db.exec('ALTER TABLE dashboard_panels ADD COLUMN report_id INTEGER REFERENCES reports(id)');
+  } catch (_) {}
+
+  try {
+    db.exec("ALTER TABLE dashboard_panels ADD COLUMN view_mode TEXT NOT NULL DEFAULT 'auto'");
+  } catch (_) {}
+
+  // Ensure a default "Main" report exists, then assign orphaned panels to it
+  const existing = db.prepare("SELECT id FROM reports WHERE name = 'Main'").get();
+  let defaultId;
+  if (!existing) {
+    defaultId = db.prepare("INSERT INTO reports (name) VALUES ('Main')").run().lastInsertRowid;
+  } else {
+    defaultId = existing.id;
   }
+  db.prepare('UPDATE dashboard_panels SET report_id = ? WHERE report_id IS NULL').run(defaultId);
 }
 
 function createSchema() {
@@ -96,6 +111,12 @@ function createSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       query_name TEXT NOT NULL,
       position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
       created_at TEXT DEFAULT (datetime('now'))
     );
   `);
@@ -240,4 +261,41 @@ function removeDashboardPanel(id) {
   db.prepare('DELETE FROM dashboard_panels WHERE id = ?').run(id);
 }
 
-module.exports = { openDatabase, importQIFData, runQuery, getDatabase, createSchema, saveQuery, listSavedQueries, deleteSavedQuery, getDashboardPanels, addDashboardPanel, removeDashboardPanel };
+function createReport(name) {
+  const result = db.prepare('INSERT INTO reports (name) VALUES (?)').run(name);
+  return result.lastInsertRowid;
+}
+
+function listReports() {
+  return db.prepare('SELECT id, name, created_at FROM reports ORDER BY created_at ASC').all();
+}
+
+function renameReport(id, name) {
+  db.prepare('UPDATE reports SET name = ? WHERE id = ?').run(name, id);
+}
+
+function deleteReport(id) {
+  db.transaction(() => {
+    db.prepare('DELETE FROM dashboard_panels WHERE report_id = ?').run(id);
+    db.prepare('DELETE FROM reports WHERE id = ?').run(id);
+  })();
+}
+
+function getReportPanels(reportId) {
+  return db.prepare(
+    'SELECT id, query_name, position, view_mode FROM dashboard_panels WHERE report_id = ? ORDER BY position ASC, id ASC'
+  ).all(reportId);
+}
+
+function addReportPanel(reportId, queryName) {
+  const row = db.prepare('SELECT MAX(position) as maxPos FROM dashboard_panels WHERE report_id = ?').get(reportId);
+  const nextPos = (row?.maxPos ?? -1) + 1;
+  const result = db.prepare('INSERT INTO dashboard_panels (report_id, query_name, position) VALUES (?, ?, ?)').run(reportId, queryName, nextPos);
+  return result.lastInsertRowid;
+}
+
+function updatePanelViewMode(id, viewMode) {
+  db.prepare('UPDATE dashboard_panels SET view_mode = ? WHERE id = ?').run(viewMode, id);
+}
+
+module.exports = { openDatabase, importQIFData, runQuery, getDatabase, createSchema, saveQuery, listSavedQueries, deleteSavedQuery, getDashboardPanels, addDashboardPanel, removeDashboardPanel, createReport, listReports, renameReport, deleteReport, getReportPanels, addReportPanel, updatePanelViewMode };
